@@ -42,6 +42,54 @@ public class LidarrClient : ArrClient, ILidarrClient
         return $"/api/v1/queue/{recordId}";
     }
 
+    public async Task<List<SearchableArtist>> GetAllArtistsAsync(ArrInstance arrInstance)
+    {
+        UriBuilder uriBuilder = new(arrInstance.Url);
+        uriBuilder.Path = $"{uriBuilder.Path.TrimEnd('/')}/api/v1/artist";
+        
+        using HttpRequestMessage request = new(HttpMethod.Get, uriBuilder.Uri);
+        SetApiKey(request, arrInstance.ApiKey);
+        
+        using HttpResponseMessage response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+        
+        using Stream stream = await response.Content.ReadAsStreamAsync();
+        using StreamReader sr = new(stream);
+        using JsonTextReader reader = new(sr);
+        JsonSerializer serializer = JsonSerializer.CreateDefault();
+        return serializer.Deserialize<List<SearchableArtist>>(reader) ?? [];
+    }
+
+    public async Task<List<SearchableAlbum>> GetAlbumsAsync(ArrInstance arrInstance, long artistId)
+    {
+        UriBuilder uriBuilder = new(arrInstance.Url);
+        uriBuilder.Path = $"{uriBuilder.Path.TrimEnd('/')}/api/v1/album";
+        uriBuilder.Query = $"artistId={artistId}";
+
+        using HttpRequestMessage request = new(HttpMethod.Get, uriBuilder.Uri);
+        SetApiKey(request, arrInstance.ApiKey);
+
+        using HttpResponseMessage response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+
+        return await DeserializeStreamAsync<List<SearchableAlbum>>(response) ?? [];
+    }
+
+    public async Task<List<ArrTrackFile>> GetTrackFilesAsync(ArrInstance arrInstance, long albumId)
+    {
+        UriBuilder uriBuilder = new(arrInstance.Url);
+        uriBuilder.Path = $"{uriBuilder.Path.TrimEnd('/')}/api/v1/track";
+        uriBuilder.Query = $"albumId={albumId}";
+
+        using HttpRequestMessage request = new(HttpMethod.Get, uriBuilder.Uri);
+        SetApiKey(request, arrInstance.ApiKey);
+
+        using HttpResponseMessage response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+
+        return await DeserializeStreamAsync<List<ArrTrackFile>>(response) ?? [];
+    }
+
     public override async Task<List<long>> SearchItemsAsync(ArrInstance arrInstance, HashSet<SearchItem>? items)
     {
         if (items?.Count is null or 0)

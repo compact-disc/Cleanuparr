@@ -29,6 +29,7 @@ public class SeekerTests : IDisposable
     private readonly ILogger<SeekerJob> _logger;
     private readonly IRadarrClient _radarrClient;
     private readonly ISonarrClient _sonarrClient;
+    private readonly ILidarrClient _lidarrClient;
     private readonly IDryRunInterceptor _dryRunInterceptor;
     private readonly IHostingEnvironment _hostingEnvironment;
     private readonly IHubContext<AppHub> _hubContext;
@@ -41,6 +42,7 @@ public class SeekerTests : IDisposable
         _logger = Substitute.For<ILogger<SeekerJob>>();
         _radarrClient = Substitute.For<IRadarrClient>();
         _sonarrClient = Substitute.For<ISonarrClient>();
+        _lidarrClient = Substitute.For<ILidarrClient>();
         _dryRunInterceptor = Substitute.For<IDryRunInterceptor>();
         _hostingEnvironment = Substitute.For<IHostingEnvironment>();
         _hubContext = Substitute.For<IHubContext<AppHub>>();
@@ -62,6 +64,9 @@ public class SeekerTests : IDisposable
             .GetAllTagsAsync(Arg.Any<ArrInstance>())
             .Returns([]);
         _sonarrClient
+            .GetAllTagsAsync(Arg.Any<ArrInstance>())
+            .Returns([]);
+        _lidarrClient
             .GetAllTagsAsync(Arg.Any<ArrInstance>())
             .Returns([]);
 
