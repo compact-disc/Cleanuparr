@@ -41,6 +41,7 @@ public sealed class Seeker : IHandler
     private readonly DataContext _dataContext;
     private readonly IRadarrClient _radarrClient;
     private readonly ISonarrClient _sonarrClient;
+    private readonly ILidarrClient _lidarrClient;
     private readonly IArrClientFactory _arrClientFactory;
     private readonly IArrQueueIterator _arrQueueIterator;
     private readonly IEventPublisher _eventPublisher;
@@ -54,6 +55,7 @@ public sealed class Seeker : IHandler
         DataContext dataContext,
         IRadarrClient radarrClient,
         ISonarrClient sonarrClient,
+        ILidarrClient lidarrClient,
         IArrClientFactory arrClientFactory,
         IArrQueueIterator arrQueueIterator,
         IEventPublisher eventPublisher,
@@ -66,6 +68,7 @@ public sealed class Seeker : IHandler
         _dataContext = dataContext;
         _radarrClient = radarrClient;
         _sonarrClient = sonarrClient;
+        _lidarrClient = _lidarrClient;
         _arrClientFactory = arrClientFactory;
         _arrQueueIterator = arrQueueIterator;
         _eventPublisher = eventPublisher;
@@ -208,7 +211,7 @@ public sealed class Seeker : IHandler
             .ToListAsync();
 
         instanceConfigs = instanceConfigs
-            .Where(s => s.ArrInstance.ArrConfig.Type is InstanceType.Sonarr or InstanceType.Radarr)
+            .Where(s => s.ArrInstance.ArrConfig.Type is InstanceType.Sonarr or InstanceType.Radarr or InstanceType.Lidarr)
             .ToList();
 
         if (instanceConfigs.Count == 0)
@@ -344,33 +347,47 @@ public sealed class Seeker : IHandler
             .Where(r => ActiveQueueStates.Contains(r.TrackedDownloadState))
             .ToList();
 
-        SeekerProcessResult result;
+        SeekerProcessResult? result;
 
-        if (instanceType == InstanceType.Radarr)
+        switch (instanceType)
         {
-            HashSet<long> queuedMovieIds = activeQueueRecords
-                .Where(r => r.MovieId > 0)
-                .Select(r => r.MovieId)
-                .ToHashSet();
+            case InstanceType.Radarr:
+                HashSet<long> queuedMovieIds = activeQueueRecords
+                    .Where(r => r.MovieId > 0)
+                    .Select(r => r.MovieId)
+                    .ToHashSet();
 
-            result = await ProcessRadarrAsync(config, arrInstance, instanceConfig, itemSearchHistory, isDryRun, queuedMovieIds);
+                result = await ProcessRadarrAsync(config, arrInstance, instanceConfig, itemSearchHistory, isDryRun, queuedMovieIds);
+                break;
+            case InstanceType.Sonarr:
+                HashSet<(long SeriesId, long SeasonNumber)> queuedSeasons = activeQueueRecords
+                    .Where(r => r.SeriesId > 0)
+                    .Select(r => (r.SeriesId, r.SeasonNumber))
+                    .ToHashSet();
+
+                result = await ProcessSonarrAsync(config, arrInstance, instanceConfig, itemSearchHistory, currentCycleHistory, isDryRun, queuedSeasons: queuedSeasons);
+                break;
+            case InstanceType.Lidarr:
+                HashSet<(long ArtistId, long AlbumId)> queuedAlbums = activeQueueRecords
+                    .Where(r => r.ArtistId > 0)
+                    .Select(r => (r.ArtistId, r.AlbumId))
+                    .ToHashSet();
+            
+                result = await ProcessLidarrAsync(config, arrInstance, instanceConfig, itemSearchHistory, currentCycleHistory, isDryRun, queuedAlbums: queuedAlbums);
+                break;
+            default:
+                result = null;
+                break;
         }
-        else
-        {
-            HashSet<(long SeriesId, long SeasonNumber)> queuedSeasons = activeQueueRecords
-                .Where(r => r.SeriesId > 0)
-                .Select(r => (r.SeriesId, r.SeasonNumber))
-                .ToHashSet();
 
-            result = await ProcessSonarrAsync(config, arrInstance, instanceConfig, itemSearchHistory, currentCycleHistory, isDryRun, queuedSeasons: queuedSeasons);
-        }
-
-        if (result.Candidates.Count == 0)
+        if (result is null || result.Candidates.Count == 0)
         {
             _logger.LogDebug("No items selected for search on {InstanceName}", arrInstance.Name);
             if (!isDryRun)
             {
-                await CleanupStaleHistoryAsync(arrInstance.Id, instanceType, result.AllLibraryIds, allHistoryExternalIds);
+                if (result?.AllLibraryIds != null)
+                    await CleanupStaleHistoryAsync(arrInstance.Id, instanceType, result?.AllLibraryIds,
+                        allHistoryExternalIds);
             }
             return false;
         }
@@ -668,6 +685,258 @@ public sealed class Seeker : IHandler
         }
 
         return new SeekerProcessResult { Candidates = [], AllLibraryIds = allLibraryIds };
+    }
+    
+    private async Task<SeekerProcessResult> ProcessLidarrAsync(
+        SeekerConfig config,
+        ArrInstance arrInstance,
+        SeekerInstanceConfig instanceConfig,
+        Dictionary<long, DateTime> searchHistory,
+        List<SeekerHistory> currentCycleHistory,
+        bool isDryRun,
+        bool isRetry = false,
+        HashSet<(long ArtistId, long AlbumId)>? queuedAlbums = null)
+    {
+        List<SearchableArtist> artists = await _lidarrClient.GetAllArtistsAsync(arrInstance);
+        List<Tag> tags = await _lidarrClient.GetAllTagsAsync(arrInstance);
+        List<long> allArtistIds = artists.Select(a => a.Id).ToList();
+        DateTime graceCutoff = _timeProvider.GetUtcNow().UtcDateTime.AddHours(-config.PostReleaseGraceHours);
+
+        Dictionary<long, string> tagsById = tags.ToDictionary(t => t.Id, t => t.Label);
+        HashSet<string> skipTagSet = new (instanceConfig.SkipTags, StringComparer.InvariantCultureIgnoreCase);
+        
+        // Apply filters
+        var candidates = artists
+            .Where(s => s.Status is "continuing" or "ended" or "released")
+            .Where(s => !instanceConfig.MonitoredOnly || s.Monitored)
+            .Where(s => instanceConfig.SkipTags.Count == 0 ||
+                        !s.Tags
+                            .Select(id => tagsById.TryGetValue(id, out var label) ? label : null)
+                            .Any(label => label is not null && skipTagSet.Contains(label))
+            )
+            // Skip fully-downloaded artists (unless quality upgrade filters active)
+            .Where(s => instanceConfig.UseCutoff || instanceConfig.UseCustomFormatScore
+                                                 || s.Statistics == null || s.Statistics.TrackCount == 0
+                                                 || s.Statistics.TrackFileCount < s.Statistics.TrackCount)
+            .ToList();
+
+        instanceConfig.TotalEligibleItems = candidates.Count;
+        
+        // LastSearched info helps the selector deprioritize recently-searched series
+        var selectionCandidates = candidates
+            .Select(s => (s.Id, s.Added, LastSearched: searchHistory.TryGetValue(s.Id, out var dt) ? (DateTime?)dt : null))
+            .ToList();
+
+        // Select all candidates in priority order so the loop can find one with unsearched seasons
+        IItemSelector selector = ItemSelectorFactory.Create(config.SelectionStrategy);
+        List<long> candidateIds = selector.Select(selectionCandidates, selectionCandidates.Count);
+
+        // Drill down to find the first series with qualifying unsearched seasons
+        foreach (long artistId in candidateIds)
+        {
+            string artistName = string.Empty;
+
+            try
+            {
+                List<SeekerHistory> seriesHistory = currentCycleHistory
+                    .Where(h => h.ExternalItemId == artistId)
+                    .ToList();
+
+                artistName = candidates.First(s => s.Id == artistId).ArtistName;
+
+                (SeriesSearchItem? searchItem, SearchableEpisode? selectedEpisode, SeekerSearchReason searchReason) =
+                    await BuildSonarrSearchItemAsync(instanceConfig, arrInstance, seriesId, seriesHistory, seriesTitle, graceCutoff, queuedSeasons);
+                    
+                if (searchItem is not null)
+                {
+                    string displayName = $"{seriesTitle} S{searchItem.Id:D2}";
+
+                    return new SeekerProcessResult
+                    {
+                        Candidates =
+                        [
+                            new SeekerSearchCandidate
+                            {
+                                ItemId = seriesId,
+                                Name = displayName,
+                                SeasonNumber = (int)searchItem.Id,
+                                Reason = searchReason,
+                            }
+                        ],
+                        AllLibraryIds = allLibraryIds,
+                    };
+                }
+
+                _logger.LogDebug("Skipping '{SeriesTitle}' — no qualifying seasons found", seriesTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to check episodes for '{SeriesTitle}', skipping", seriesTitle);
+            }
+        }
+
+        // All candidates were tried and none had qualifying unsearched seasons — cycle complete
+        if (candidates.Count > 0 && !isRetry)
+        {
+            // Respect MinCycleTimeDays even when cycle completes due to queue filtering
+            DateTime? cycleStartedAt = seriesSearchHistory.Count > 0 ? seriesSearchHistory.Values.Min() : null;
+            if (ShouldWaitForMinCycleTime(instanceConfig, cycleStartedAt))
+            {
+                _logger.LogDebug(
+                    "skip | cycle complete but min time ({Days}) not elapsed (started {StartedAt}) | {InstanceName}",
+                    instanceConfig.MinCycleTimeDays, cycleStartedAt, arrInstance.Name);
+                return new SeekerProcessResult { Candidates = [], AllLibraryIds = allLibraryIds };
+            }
+
+            _logger.LogInformation("All {Count} series on {InstanceName} searched in current cycle, starting new cycle",
+                candidates.Count, arrInstance.Name);
+            if (!isDryRun)
+            {
+                instanceConfig.CurrentCycleId = Guid.NewGuid();
+                _dataContext.SeekerInstanceConfigs.Update(instanceConfig);
+                await _dataContext.SaveChangesAsync();
+            }
+
+            // Retry with fresh cycle (only once to prevent infinite recursion)
+            return await ProcessSonarrAsync(config, arrInstance, instanceConfig,
+                new Dictionary<long, DateTime>(), [], isDryRun, isRetry: true, queuedSeasons: queuedSeasons);
+        }
+
+        return new SeekerProcessResult { Candidates = searchCandidates, AllLibraryIds = allArtistIds };
+    }
+
+    private async Task<(ArtistSearchItem? SearchItem, SeekerSearchReason SearchReason)> BuildLidarrSearchItemAsync(
+            SeekerInstanceConfig instanceConfig,
+            ArrInstance arrInstance,
+            long artistId,
+            List<SeekerHistory> artistHistory,
+            string artistName,
+            DateTime graceCutoff,
+            HashSet<(long ArtistId, long AlbumId)>? queuedAlbums = null)
+    {
+        List<SearchableAlbum> albums = await _lidarrClient.GetAlbumsAsync(arrInstance, artistId);
+
+        List<ArrTrackFile> trackFiles = new List<ArrTrackFile>();
+        foreach (SearchableAlbum album in albums)
+        {
+            trackFiles.AddRange(await _lidarrClient.GetTrackFilesAsync(arrInstance, album.Id));
+        }
+        
+        // Fetch episode file metadata to determine cutoff status from the dedicated episodefile endpoint
+        HashSet<long> cutoffNotMetFileIds = [];
+        if (instanceConfig.UseCutoff)
+        {
+            cutoffNotMetFileIds = trackFiles
+                .Where(f => f.QualityCutoffNotMet)
+                .Select(f => f.Id)
+                .ToHashSet();
+        }
+
+        // Load cached CF scores for this series when custom format score filtering is enabled
+        Dictionary<long, CustomFormatScoreEntry>? cfScores = null;
+        if (instanceConfig.UseCustomFormatScore)
+        {
+            cfScores = await _dataContext.CustomFormatScoreEntries
+                .AsNoTracking()
+                .Where(e => e.ArrInstanceId == arrInstance.Id
+                    && e.ItemType == InstanceType.Lidarr)
+                .ToDictionaryAsync(e => e.ExternalItemId);
+        }
+
+        // Filter to qualifying episodes — UseCutoff and UseCustomFormatScore are OR-ed.
+        // Cutoff status comes from the episodefile endpoint; items without a cached CF score are excluded.
+        var qualifying = albums
+            .Where(e => e.ReleaseDateUtc.HasValue && e.ReleaseDateUtc.Value <= graceCutoff)
+            .OrderBy(e => e.ReleaseDateUtc)
+            .ToList();
+
+        if (qualifying.Count == 0)
+        {
+            return (null, default);
+        }
+
+        // Select least-recently-searched season using history
+        var albumGroups = qualifying
+            .GroupBy(e => e.ReleaseDateUtc)
+            .Select(g =>
+            {
+                DateTime? lastSearched = artistHistory
+                    .FirstOrDefault(h => h.LastSearchedAt == g.Key)
+                    ?.LastSearchedAt;
+                return (SeasonNumber: g.Key, LastSearched: lastSearched, FirstEpisode: g.First());
+            })
+            .ToList();
+
+        // Find unsearched seasons first
+        var unsearched = seasonGroups.Where(s => s.LastSearched is null).ToList();
+
+        // Exclude seasons already in the download queue
+        if (queuedSeasons is { Count: > 0 })
+        {
+            int beforeCount = unsearched.Count;
+            unsearched = unsearched
+                .Where(s => !queuedSeasons.Contains((seriesId, (long)s.SeasonNumber)))
+                .ToList();
+
+            int skipped = beforeCount - unsearched.Count;
+            if (skipped > 0)
+            {
+                _logger.LogDebug("Excluded {Count} seasons already in queue for '{SeriesTitle}' on {InstanceName}",
+                    skipped, seriesTitle, arrInstance.Name);
+            }
+        }
+
+        if (unsearched.Count == 0)
+        {
+            // All unsearched seasons are either searched or in the queue
+            return (null, default);
+        }
+
+        // Pick from unsearched seasons with some randomization
+        var selected = unsearched
+            .OrderBy(_ => Random.Shared.Next())
+            .First();
+
+        // Log why this season was selected
+        var seasonEpisodes = qualifying.Where(e => e.SeasonNumber == selected.SeasonNumber).ToList();
+        int missingCount = seasonEpisodes.Count(e => !e.HasFile);
+        int cutoffCount = seasonEpisodes.Count(e => e.HasFile && cutoffNotMetFileIds.Contains(e.EpisodeFileId));
+        int cfCount = seasonEpisodes.Count(e => e.HasFile && cfScores != null
+            && cfScores.TryGetValue(e.Id, out var cfEntry) && cfEntry.CurrentScore < cfEntry.CutoffScore);
+
+        List<string> reasons = [];
+        if (missingCount > 0)
+        {
+            reasons.Add($"{missingCount} missing");
+        }
+
+        if (cutoffCount > 0)
+        {
+            reasons.Add($"{cutoffCount} cutoff unmet");
+        }
+
+        if (cfCount > 0)
+        {
+            reasons.Add($"{cfCount} below CF score cutoff");
+        }
+
+        // Determine the primary search reason
+        SeekerSearchReason searchReason = missingCount > 0
+            ? SeekerSearchReason.Missing
+            : cutoffCount > 0
+                ? SeekerSearchReason.QualityCutoffNotMet
+                : SeekerSearchReason.CustomFormatScoreBelowCutoff;
+
+        _logger.LogDebug("Selected '{SeriesTitle}' S{Season:D2} for search on {InstanceName}: {Reasons}",
+            seriesTitle, selected.SeasonNumber, arrInstance.Name, string.Join(", ", reasons));
+
+        SeriesSearchItem searchItem = new()
+        {
+            Id = selected.SeasonNumber,
+            SearchType = SeriesSearchType.Season
+        };
+
+        return (searchItem, searchReason);
     }
 
     /// <summary>
