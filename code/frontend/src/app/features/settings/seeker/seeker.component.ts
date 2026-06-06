@@ -232,6 +232,7 @@ export class SeekerComponent implements OnInit, HasPendingChanges {
   getInstanceTypeSeverity(type: string): BadgeSeverity {
     if (type === 'Radarr') return 'warning';
     if (type === 'Sonarr') return 'info';
+    if (type === 'Lidarr') return 'info';
     return 'default';
   }
 

@@ -333,6 +333,6 @@ export class QualityTabComponent implements OnInit {
   }
 
   itemTypeSeverity(itemType: string): 'info' | 'default' {
-    return itemType === 'Radarr' || itemType === 'Sonarr' ? 'info' : 'default';
+    return itemType === 'Radarr' || itemType === 'Sonarr' || itemType === 'Lidarr' ? 'info' : 'default';
   }
 }
