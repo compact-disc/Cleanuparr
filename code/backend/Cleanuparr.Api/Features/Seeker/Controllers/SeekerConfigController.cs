@@ -37,11 +37,11 @@ public sealed class SeekerConfigController : ControllerBase
             .AsNoTracking()
             .FirstAsync();
 
-        // Get all Sonarr/Radarr instances with their seeker configs
+        // Get all Sonarr, Radarr, and Lidarr instances with their seeker configs
         var arrInstances = await _dataContext.ArrInstances
             .AsNoTracking()
             .Include(a => a.ArrConfig)
-            .Where(a => a.ArrConfig.Type == InstanceType.Sonarr || a.ArrConfig.Type == InstanceType.Radarr)
+            .Where(a => a.ArrConfig.Type == InstanceType.Sonarr || a.ArrConfig.Type == InstanceType.Radarr || a.ArrConfig.Type == InstanceType.Lidarr)
             .ToListAsync();
 
         var arrInstanceIds = arrInstances.Select(a => a.Id).ToHashSet();
