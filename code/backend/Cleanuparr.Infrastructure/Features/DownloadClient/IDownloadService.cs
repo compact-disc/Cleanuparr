@@ -38,6 +38,12 @@ public interface IDownloadService : IDisposable
     Task<List<ITorrentItemWrapper>> GetAllTorrentsLite();
 
     /// <summary>
+    /// Resolves the on-disk paths claimed by the given torrents.
+    /// </summary>
+    /// <returns>The distinct, remapped paths claimed by the torrents.</returns>
+    Task<IReadOnlyList<string>> GetClaimedPathsAsync(IReadOnlyList<ITorrentItemWrapper> torrents);
+
+    /// <summary>
     /// Filters downloads that should be cleaned.
     /// </summary>
     /// <param name="downloads">The downloads to filter.</param>
@@ -66,6 +72,14 @@ public interface IDownloadService : IDisposable
     /// <param name="downloads">The downloads to change.</param>
     /// <param name="unlinkedConfig">The unlinked config for this download client.</param>
     Task ChangeCategoryForNoHardLinksAsync(List<ITorrentItemWrapper>? downloads, UnlinkedConfig unlinkedConfig);
+
+    /// <summary>
+    /// Moves a single torrent to the target category, or adds it as a tag/label when <paramref name="useTag"/> is set.
+    /// </summary>
+    /// <param name="torrent">The torrent to move.</param>
+    /// <param name="targetCategory">The target category/tag.</param>
+    /// <param name="useTag">When true, add a tag/label instead of changing the category (qBittorrent and Transmission).</param>
+    Task ChangeTorrentCategoryAsync(ITorrentItemWrapper torrent, string targetCategory, bool useTag);
 
     /// <summary>
     /// Deletes a download item.

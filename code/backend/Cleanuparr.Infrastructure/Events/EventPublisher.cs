@@ -117,6 +117,7 @@ public class EventPublisher : IEventPublisher
             StrikeType.FailedImport => EventType.FailedImportStrike,
             StrikeType.SlowSpeed => EventType.SlowSpeedStrike,
             StrikeType.SlowTime => EventType.SlowTimeStrike,
+            StrikeType.DeadTorrent => EventType.DeadTorrentStrike,
             _ => throw new ArgumentOutOfRangeException(nameof(strikeType), strikeType, null)
         };
 
@@ -303,7 +304,7 @@ public class EventPublisher : IEventPublisher
         }
 
         existingEvent.SearchStatus = status;
-        existingEvent.CompletedAt = DateTime.UtcNow;
+        existingEvent.CompletedAt = DateTimeOffset.UtcNow;
 
         if (grabbedItems is { Count: > 0 } && existingEvent.SearchEventData is not null)
         {
@@ -365,7 +366,7 @@ public class EventPublisher : IEventPublisher
             {
                 Id = strikeId ?? Guid.Empty,
                 Type = strikeType.ToString(),
-                CreatedAt = DateTime.UtcNow,
+                CreatedAt = DateTimeOffset.UtcNow,
                 DownloadId = hash,
                 Title = itemName,
                 IsDryRun = isDryRun,

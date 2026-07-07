@@ -36,6 +36,19 @@ public partial class UTorrentService
             .ToList();
     }
 
+    /// <inheritdoc/>
+    public override Task<IReadOnlyList<string>> GetClaimedPathsAsync(IReadOnlyList<ITorrentItemWrapper> torrents) =>
+        BuildClaimedPathsAsync(torrents, async torrent =>
+        {
+            if (string.IsNullOrEmpty(torrent.Hash))
+            {
+                return [];
+            }
+
+            List<UTorrentFile>? files = await _client.GetTorrentFilesAsync(torrent.Hash);
+            return files?.Select(f => f.Name).Where(name => !string.IsNullOrEmpty(name)).ToList() ?? [];
+        });
+
     public override List<ITorrentItemWrapper>? FilterDownloadsToBeCleanedAsync(List<ITorrentItemWrapper>? downloads, List<ISeedingRule> seedingRules) =>
         downloads
             ?.Where(x => seedingRules.Any(rule => rule.Categories.Any(cat => cat.Equals(x.Category, StringComparison.OrdinalIgnoreCase))))
@@ -131,6 +144,22 @@ public partial class UTorrentService
 
             torrent.Category = unlinkedConfig.TargetCategory;
         }
+    }
+
+    /// <inheritdoc/>
+    public override async Task ChangeTorrentCategoryAsync(ITorrentItemWrapper torrent, string targetCategory, bool useTag)
+    {
+        ContextProvider.Set(ContextProvider.Keys.ItemName, torrent.Name);
+        ContextProvider.Set(ContextProvider.Keys.Hash, torrent.Hash);
+        SetDownloadClientContext();
+
+        string currentCategory = torrent.Category ?? string.Empty;
+
+        await _dryRunInterceptor.InterceptAsync(() => ChangeLabel(torrent.Hash, targetCategory));
+
+        await _eventPublisher.PublishCategoryChanged(currentCategory, targetCategory);
+
+        torrent.Category = targetCategory;
     }
 
     protected virtual async Task ChangeLabel(string hash, string newLabel)

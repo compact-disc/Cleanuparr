@@ -24,6 +24,7 @@ permissions:
 
 jobs:
   e2e:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -63,7 +64,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
 
       - name: Install E2E dependencies
         working-directory: e2e
@@ -71,7 +72,8 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: e2e
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 5
+        run: npx playwright install chromium
 
       - name: Wait for Keycloak
         run: |

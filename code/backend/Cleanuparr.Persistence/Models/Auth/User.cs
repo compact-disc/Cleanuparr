@@ -43,13 +43,18 @@ public class User
 
     public int FailedLoginAttempts { get; set; }
 
-    public DateTime? LockoutEnd { get; set; }
+    public DateTimeOffset? LockoutEnd { get; set; }
 
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 
-    public DateTime UpdatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 
     public List<RecoveryCode> RecoveryCodes { get; set; } = [];
 
     public List<RefreshToken> RefreshTokens { get; set; } = [];
+
+    /// <summary>
+    /// Records of when this user first saw each feature, used to drive the "NEW" feature badges.
+    /// </summary>
+    public List<UserFeatureView> FeatureViews { get; set; } = [];
 }

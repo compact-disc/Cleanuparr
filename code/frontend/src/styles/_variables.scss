@@ -27,6 +27,12 @@ $color-error-dim:   #991b1b;
 $color-info:        #3b82f6;
 $color-info-dim:    #1e40af;
 
+// "NEW" feature badge
+$new-badge-flame-start: #ffb020;
+$new-badge-flame-mid:   #ff6a00;
+$new-badge-flame-end:   #f5333f;
+$new-badge-glow-rgb:    255, 90, 0;
+
 // Spacing scale (rem-based for accessibility)
 $space-0:  0;
 $space-px: 1px;
@@ -88,11 +94,6 @@ $font-size-2xl:  1.5rem;     // 24px
 $font-size-3xl:  1.875rem;   // 30px
 $font-size-4xl:  2.25rem;    // 36px
 
-$line-height-tight:  1.25;
-$line-height-snug:   1.375;
-$line-height-normal: 1.5;
-$line-height-relaxed: 1.625;
-
 $font-weight-normal:   400;
 $font-weight-medium:   500;
 $font-weight-semibold: 600;
@@ -103,6 +104,9 @@ $sidebar-width:           260px;
 $sidebar-collapsed-width: 64px;
 $toolbar-height:          56px;
 $content-max-width:       1400px;
+$input-height:            38px;
+$drawer-width:            420px;
+$toast-max-width:         400px;
 
 // Z-index layers
 $z-dropdown:  100;
@@ -123,3 +127,12 @@ $shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.05);
 $shadow-md:  0 4px 6px -1px rgba(0, 0, 0, 0.1);
 $shadow-lg:  0 10px 15px -3px rgba(0, 0, 0, 0.1);
 $shadow-xl:  0 20px 25px -5px rgba(0, 0, 0, 0.1);
+$shadow-tooltip: 0 4px 12px rgba(0, 0, 0, 0.3);
+
+// Third-party brand
+$plex-brand:       #e5a00d;
+$plex-brand-ink:   #1a1a2e;
+$plex-brand-hover: #d4920c;
+
+// Static surfaces
+$surface-always-light: #ffffff;

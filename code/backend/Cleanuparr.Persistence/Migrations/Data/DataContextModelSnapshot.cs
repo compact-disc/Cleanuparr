@@ -113,6 +113,49 @@ namespace Cleanuparr.Persistence.Migrations.Data
                     b.ToTable("blacklist_sync_configs", (string)null);
                 });
 
+            modelBuilder.Entity("Cleanuparr.Persistence.Models.Configuration.DownloadCleaner.DeadTorrentConfig", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Categories")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("categories");
+
+                    b.Property<Guid>("DownloadClientConfigId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("download_client_config_id");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("enabled");
+
+                    b.Property<ushort>("MaxStrikes")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("max_strikes");
+
+                    b.Property<string>("TargetCategory")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("target_category");
+
+                    b.Property<bool>("UseTag")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("use_tag");
+
+                    b.HasKey("Id")
+                        .HasName("pk_dead_torrent_configs");
+
+                    b.HasIndex("DownloadClientConfigId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_dead_torrent_configs_download_client_config_id");
+
+                    b.ToTable("dead_torrent_configs", (string)null);
+                });
+
             modelBuilder.Entity("Cleanuparr.Persistence.Models.Configuration.DownloadCleaner.DelugeSeedingRule", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1036,7 +1079,7 @@ namespace Cleanuparr.Persistence.Migrations.Data
                         .HasColumnType("TEXT")
                         .HasColumnName("id");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
@@ -1087,7 +1130,7 @@ namespace Cleanuparr.Persistence.Migrations.Data
                         .HasColumnType("TEXT")
                         .HasColumnName("type");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
@@ -1534,7 +1577,7 @@ namespace Cleanuparr.Persistence.Migrations.Data
                         .HasColumnType("INTEGER")
                         .HasColumnName("enabled");
 
-                    b.Property<DateTime?>("LastProcessedAt")
+                    b.Property<DateTimeOffset?>("LastProcessedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("last_processed_at");
 
@@ -1645,11 +1688,11 @@ namespace Cleanuparr.Persistence.Migrations.Data
                         .HasColumnType("TEXT")
                         .HasColumnName("item_type");
 
-                    b.Property<DateTime>("LastSyncedAt")
+                    b.Property<DateTimeOffset>("LastSyncedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("last_synced_at");
 
-                    b.Property<DateTime?>("LastUpgradedAt")
+                    b.Property<DateTimeOffset?>("LastUpgradedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("last_upgraded_at");
 
@@ -1704,7 +1747,7 @@ namespace Cleanuparr.Persistence.Migrations.Data
                         .HasColumnType("TEXT")
                         .HasColumnName("item_type");
 
-                    b.Property<DateTime>("RecordedAt")
+                    b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("recorded_at");
 
@@ -1740,7 +1783,7 @@ namespace Cleanuparr.Persistence.Migrations.Data
                         .HasColumnType("TEXT")
                         .HasColumnName("arr_instance_id");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
@@ -1785,7 +1828,7 @@ namespace Cleanuparr.Persistence.Migrations.Data
                         .HasColumnType("INTEGER")
                         .HasColumnName("command_id");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
@@ -1853,7 +1896,7 @@ namespace Cleanuparr.Persistence.Migrations.Data
                         .HasColumnType("TEXT")
                         .HasColumnName("item_type");
 
-                    b.Property<DateTime>("LastSearchedAt")
+                    b.Property<DateTimeOffset>("LastSearchedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("last_searched_at");
 
@@ -1885,6 +1928,18 @@ namespace Cleanuparr.Persistence.Migrations.Data
                         .HasConstraintName("fk_arr_instances_arr_configs_arr_config_id");
 
                     b.Navigation("ArrConfig");
+                });
+
+            modelBuilder.Entity("Cleanuparr.Persistence.Models.Configuration.DownloadCleaner.DeadTorrentConfig", b =>
+                {
+                    b.HasOne("Cleanuparr.Persistence.Models.Configuration.DownloadClientConfig", "DownloadClientConfig")
+                        .WithMany()
+                        .HasForeignKey("DownloadClientConfigId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_dead_torrent_configs_download_clients_download_client_config_id");
+
+                    b.Navigation("DownloadClientConfig");
                 });
 
             modelBuilder.Entity("Cleanuparr.Persistence.Models.Configuration.DownloadCleaner.DelugeSeedingRule", b =>

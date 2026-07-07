@@ -30,10 +30,17 @@
   --color-success-dim: #{$color-success-dim};
   --color-warning:     #{$color-warning};
   --color-warning-dim: #{$color-warning-dim};
+  --color-warning-bg:  color-mix(in srgb, #{$color-warning} 10%, transparent);
   --color-error:       #{$color-error};
   --color-error-dim:   #{$color-error-dim};
   --color-info:        #{$color-info};
   --color-info-dim:    #{$color-info-dim};
+
+  // "NEW" feature badge flame palette
+  --new-badge-flame-start: #{$new-badge-flame-start};
+  --new-badge-flame-mid:   #{$new-badge-flame-mid};
+  --new-badge-flame-end:   #{$new-badge-flame-end};
+  --new-badge-glow-rgb:    #{$new-badge-glow-rgb};
 
   // Spacing
   --space-0:   #{$space-0};
@@ -95,6 +102,20 @@
   --sidebar-collapsed-width: #{$sidebar-collapsed-width};
   --toolbar-height:          #{$toolbar-height};
   --content-max-width:       #{$content-max-width};
+  --input-height:            #{$input-height};
+  --drawer-width:            #{$drawer-width};
+  --toast-max-width:         #{$toast-max-width};
+
+  // Elevation
+  --shadow-tooltip: #{$shadow-tooltip};
+
+  // Third-party brand
+  --plex-brand:       #{$plex-brand};
+  --plex-brand-ink:   #{$plex-brand-ink};
+  --plex-brand-hover: #{$plex-brand-hover};
+
+  // Static surfaces
+  --surface-always-light: #{$surface-always-light};
 
   // Z-index
   --z-dropdown: #{$z-dropdown};

@@ -14,6 +14,8 @@ import { filter } from 'rxjs';
 import { NavSidebarComponent } from '../nav-sidebar/nav-sidebar.component';
 import { ToolbarComponent } from '../toolbar/toolbar.component';
 import { AppHubService } from '@core/realtime/app-hub.service';
+import { FeatureBadgeService } from '@core/feature-badges/feature-badge.service';
+import { registerOverlayEffect } from '@core/services/overlay-stack.service';
 
 @Component({
   selector: 'app-shell',
@@ -26,6 +28,7 @@ import { AppHubService } from '@core/realtime/app-hub.service';
 export class ShellComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private hub = inject(AppHubService);
+  private featureBadge = inject(FeatureBadgeService);
   private destroyRef = inject(DestroyRef);
 
   sidebarCollapsed = signal(false);
@@ -35,10 +38,16 @@ export class ShellComponent implements OnInit, OnDestroy {
   private readonly MOBILE_BREAKPOINT = 768;
   private readonly TABLET_BREAKPOINT = 1024;
   private autoCollapsed = signal(false);
+  private isTopmostOverlay!: () => boolean;
+
+  constructor() {
+    this.isTopmostOverlay = registerOverlayEffect(this.mobileMenuOpen);
+  }
 
   ngOnInit(): void {
     this.checkMobile();
     this.hub.start();
+    this.featureBadge.init();
 
     // Auto-close mobile menu on navigation
     this.router.events
@@ -56,6 +65,13 @@ export class ShellComponent implements OnInit, OnDestroy {
   @HostListener('window:resize')
   onResize(): void {
     this.checkMobile();
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (this.mobileMenuOpen() && this.isTopmostOverlay()) {
+      this.closeMobileMenu();
+    }
   }
 
   toggleSidebar(): void {

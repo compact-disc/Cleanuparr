@@ -4,6 +4,7 @@ using Cleanuparr.Infrastructure.Features.Context;
 using Cleanuparr.Persistence.Models.Configuration.DownloadCleaner;
 using Cleanuparr.Shared.Helpers;
 using Microsoft.Extensions.Logging;
+using Transmission.API.RPC.Arguments;
 using Transmission.API.RPC.Entity;
 
 namespace Cleanuparr.Infrastructure.Features.DownloadClient.Transmission;
@@ -31,6 +32,19 @@ public partial class TransmissionService
     }
 
     /// <inheritdoc/>
+    public override Task<IReadOnlyList<string>> GetClaimedPathsAsync(IReadOnlyList<ITorrentItemWrapper> torrents) =>
+        BuildClaimedPathsAsync(torrents, torrent =>
+        {
+            IReadOnlyCollection<string> files = torrent is TransmissionItemWrapper { Info.Files.Length: > 0 } wrapper
+                ? wrapper.Info.Files
+                    .Select(f => f.Name)
+                    .Where(name => !string.IsNullOrEmpty(name))
+                    .ToList()
+                : [];
+            return Task.FromResult(files);
+        });
+
+    /// <inheritdoc/>
     public override List<ITorrentItemWrapper>? FilterDownloadsToBeCleanedAsync(List<ITorrentItemWrapper>? downloads, List<ISeedingRule> seedingRules)
     {
         return downloads
@@ -43,6 +57,16 @@ public partial class TransmissionService
         return downloads
             ?.Where(x => !string.IsNullOrEmpty(x.Hash))
             .Where(x => unlinkedConfig.Categories.Any(cat => cat.Equals(x.Category, StringComparison.InvariantCultureIgnoreCase)))
+            .Where(x =>
+            {
+                if (unlinkedConfig.UseTag)
+                {
+                    return !x.Tags.Any(tag =>
+                        tag.Equals(unlinkedConfig.TargetCategory, StringComparison.InvariantCultureIgnoreCase));
+                }
+
+                return true;
+            })
             .ToList();
     }
 
@@ -128,6 +152,23 @@ public partial class TransmissionService
             }
 
             string currentCategory = torrent.Category ?? string.Empty;
+
+            if (unlinkedConfig.UseTag)
+            {
+                string[] newLabels = torrent.Tags
+                    .Append(unlinkedConfig.TargetCategory)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                await _dryRunInterceptor.InterceptAsync(() => ChangeLabels(torrent.Info.Id, newLabels));
+
+                _logger.LogInformation("label added for {name}", torrent.Name);
+
+                await _eventPublisher.PublishCategoryChanged(currentCategory, unlinkedConfig.TargetCategory, isTag: true);
+
+                continue;
+            }
+
             string newLocation = torrent.Info.GetNewLocationByAppend(unlinkedConfig.TargetCategory);
 
             await _dryRunInterceptor.InterceptAsync(() => ChangeDownloadLocation(torrent.Info.Id, newLocation));
@@ -140,8 +181,51 @@ public partial class TransmissionService
         }
     }
 
+    /// <inheritdoc/>
+    public override async Task ChangeTorrentCategoryAsync(ITorrentItemWrapper torrent, string targetCategory, bool useTag)
+    {
+        var transmissionTorrent = (TransmissionItemWrapper)torrent;
+
+        ContextProvider.Set(ContextProvider.Keys.ItemName, torrent.Name);
+        ContextProvider.Set(ContextProvider.Keys.Hash, torrent.Hash);
+        SetDownloadClientContext();
+
+        string currentCategory = torrent.Category ?? string.Empty;
+
+        if (useTag)
+        {
+            string[] newLabels = torrent.Tags
+                .Append(targetCategory)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            await _dryRunInterceptor.InterceptAsync(() => ChangeLabels(transmissionTorrent.Info.Id, newLabels));
+
+            await _eventPublisher.PublishCategoryChanged(currentCategory, targetCategory, isTag: true);
+
+            return;
+        }
+
+        string newLocation = transmissionTorrent.Info.GetNewLocationByAppend(targetCategory);
+
+        await _dryRunInterceptor.InterceptAsync(() => ChangeDownloadLocation(transmissionTorrent.Info.Id, newLocation));
+
+        await _eventPublisher.PublishCategoryChanged(currentCategory, targetCategory);
+
+        torrent.Category = targetCategory;
+    }
+
     protected virtual async Task ChangeDownloadLocation(long downloadId, string newLocation)
     {
         await _client.TorrentSetLocationAsync([downloadId], newLocation, true);
+    }
+
+    protected virtual async Task ChangeLabels(long downloadId, string[] labels)
+    {
+        await _client.TorrentSetAsync(new TorrentSettings
+        {
+            Ids = [downloadId],
+            Labels = labels,
+        });
     }
 }

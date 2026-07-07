@@ -1,9 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { ApplicationPathService } from './base-path.service';
 
-interface FieldMappings {
-  [section: string]: { [field: string]: string };
-}
+type FieldMappings = Record<string, Record<string, string>>;
 
 @Injectable({ providedIn: 'root' })
 export class DocumentationService {
@@ -86,10 +84,13 @@ export class DocumentationService {
       'unlinkedEnabled': 'enable-unlinked-download-handling',
       'unlinkedTargetCategory': 'target-category',
       'unlinkedUseTag': 'use-tag',
-      'downloadDirectorySource': 'download-directory-source-and-local-directory-target',
-      'downloadDirectoryTarget': 'download-directory-source-and-local-directory-target',
       'unlinkedIgnoredRootDir': 'ignored-root-directory',
       'unlinkedCategories': 'unlinked-categories',
+      'deadTorrentEnabled': 'enable-dead-torrent',
+      'deadTorrentTargetCategory': 'dead-torrent-target-category',
+      'deadTorrentUseTag': 'dead-torrent-use-tag',
+      'deadTorrentStrikes': 'dead-torrent-strikes',
+      'deadTorrentCategories': 'dead-torrent-categories',
       'orphanedFilesEnabled': 'enabled-per-client',
       'orphanedFilesScanDirectories': 'scan-directories',
       'orphanedFilesOrphanedDirectory': 'orphaned-directory',
@@ -125,6 +126,8 @@ export class DocumentationService {
       'externalUrl': 'external-url',
       'username': 'username',
       'password': 'password',
+      'downloadDirectorySource': 'download-directory-source-and-target',
+      'downloadDirectoryTarget': 'download-directory-source-and-target',
     },
     'blacklist-sync': {
       'enabled': 'enable-blacklist-sync',

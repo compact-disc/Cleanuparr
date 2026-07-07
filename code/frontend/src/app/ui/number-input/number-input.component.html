@@ -1,10 +1,13 @@
 @if (label()) {
-  <label class="number-label">
+  <label class="number-label" [attr.for]="controlId">
     {{ label() }}
     @if (helpKey()) {
       <button class="field-help-btn" (click)="onHelpClick($event)" aria-label="Open documentation" tabindex="-1">
         <ng-icon name="tablerQuestionMark" size="14" />
       </button>
+    }
+    @if (featureId()) {
+      <app-new-badge variant="inline" [featureId]="featureId()!" />
     }
   </label>
 }
@@ -17,6 +20,7 @@
     aria-label="Decrease"
   >−</button>
   <input
+    [id]="controlId"
     class="number-field"
     [class.number-field--error]="error()"
     type="number"

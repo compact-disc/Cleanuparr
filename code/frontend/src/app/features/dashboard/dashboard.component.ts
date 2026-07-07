@@ -1,4 +1,6 @@
-import { Component, ChangeDetectionStrategy, inject, computed, signal, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, computed, signal } from '@angular/core';
+import { rxResource } from '@angular/core/rxjs-interop';
+import type { Observable } from 'rxjs';
 import { Router, RouterLink } from '@angular/router';
 import { DatePipe, JsonPipe } from '@angular/common';
 import { NgIcon } from '@ng-icons/core';
@@ -9,9 +11,9 @@ import { AppHubService } from '@core/realtime/app-hub.service';
 import { EventsApi } from '@core/api/events.api';
 import { JobsApi } from '@core/api/jobs.api';
 import { GeneralConfigApi } from '@core/api/general-config.api';
-import { CfScoreApi, CfScoreStats, CfScoreUpgrade } from '@core/api/cf-score.api';
+import { CfScoreApi, CfScoreStats, CfScoreUpgradesResponse } from '@core/api/cf-score.api';
 import { ToastService } from '@core/services/toast.service';
-import { LogEntry } from '@core/models/signalr.models';
+import { ConfirmService } from '@core/services/confirm.service';
 import { ManualEvent } from '@core/models/event.models';
 import { JobType } from '@shared/models/enums';
 
@@ -40,7 +42,7 @@ type DashboardRowId = typeof DEFAULT_ROW_ORDER[number];
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent {
   readonly JobType = JobType;
 
   private readonly hub = inject(AppHubService);
@@ -49,13 +51,35 @@ export class DashboardComponent implements OnInit {
   private readonly generalConfigApi = inject(GeneralConfigApi);
   private readonly cfScoreApi = inject(CfScoreApi);
   private readonly toast = inject(ToastService);
+  private readonly confirm = inject(ConfirmService);
   private readonly router = inject(Router);
+
+  private static readonly MANUAL_PAGE_SIZE = 20;
+
+  constructor() {
+    this.loadMoreManualEvents();
+  }
 
   readonly connected = this.hub.isConnected;
   readonly jobs = this.hub.jobs;
-  readonly showSupportSection = signal(false);
-  readonly cfScoreStats = signal<CfScoreStats | null>(null);
-  readonly cfScoreUpgrades = signal<CfScoreUpgrade[]>([]);
+
+  private readonly generalConfigResource = rxResource({
+    stream: () => this.generalConfigApi.get(),
+  });
+  private readonly cfScoreStatsResource = rxResource({
+    stream: (): Observable<CfScoreStats | null> => this.cfScoreApi.getStats(),
+    defaultValue: null,
+  });
+  private readonly cfScoreUpgradesResource = rxResource({
+    stream: () => this.cfScoreApi.getRecentUpgrades({ page: 1, pageSize: 5 }),
+    defaultValue: { items: [], page: 1, pageSize: 5, totalCount: 0, totalPages: 0 } as CfScoreUpgradesResponse,
+  });
+
+  readonly showSupportSection = computed(() =>
+    this.generalConfigResource.hasValue() ? this.generalConfigResource.value().displaySupportBanner : false,
+  );
+  readonly cfScoreStats = computed(() => this.cfScoreStatsResource.value());
+  readonly cfScoreUpgrades = computed(() => this.cfScoreUpgradesResource.value().items);
 
   readonly rowOrder = signal<DashboardRowId[]>(this.loadOrder());
   readonly visibleRowOrder = computed(() => {
@@ -67,11 +91,36 @@ export class DashboardComponent implements OnInit {
   readonly recentLogs = computed(() => this.hub.logs().slice(0, 5));
   readonly recentEvents = computed(() => this.hub.events().slice(0, 5));
 
-  readonly unresolvedManualEvents = computed(() =>
-    this.hub.manualEvents().filter((e) => !e.isResolved)
-  );
+  // REST-paged backlog of unresolved manual events (lazily loaded page by page)
+  private readonly manualPages = signal<ManualEvent[]>([]);
+  private readonly manualNextPage = signal(1);
+  private readonly totalUnresolvedManualEvents = signal(0);
+  readonly loadingMoreManualEvents = signal(false);
+
+  // Merge live-pushed hub events with the lazily-paged backlog, newest first
+  readonly unresolvedManualEvents = computed(() => {
+    const byId = new Map<string, ManualEvent>();
+    for (const e of this.hub.manualEvents()) {
+      if (!e.isResolved) {
+        byId.set(e.id, e);
+      }
+    }
+    for (const e of this.manualPages()) {
+      if (!e.isResolved) {
+        byId.set(e.id, e);
+      }
+    }
+    return [...byId.values()].sort((a, b) =>
+      a.timestamp < b.timestamp ? 1 : a.timestamp > b.timestamp ? -1 : 0
+    );
+  });
 
   readonly manualEventIndex = signal(0);
+
+  // True unresolved count; live pushes may exceed the last known server total
+  readonly manualEventCount = computed(() =>
+    Math.max(this.totalUnresolvedManualEvents(), this.unresolvedManualEvents().length)
+  );
 
   readonly currentManualEvent = computed(() => {
     const events = this.unresolvedManualEvents();
@@ -81,24 +130,8 @@ export class DashboardComponent implements OnInit {
 
   readonly canNavigatePrev = computed(() => this.manualEventIndex() > 0);
   readonly canNavigateNext = computed(() =>
-    this.manualEventIndex() < this.unresolvedManualEvents().length - 1
+    this.manualEventIndex() < this.manualEventCount() - 1
   );
-
-  ngOnInit(): void {
-    this.generalConfigApi.get().subscribe({
-      next: (config) => this.showSupportSection.set(config.displaySupportBanner),
-    });
-    this.loadCfScoreData();
-  }
-
-  private loadCfScoreData(): void {
-    this.cfScoreApi.getStats().subscribe({
-      next: (stats) => this.cfScoreStats.set(stats),
-    });
-    this.cfScoreApi.getRecentUpgrades({ page: 1, pageSize: 5 }).subscribe({
-      next: (res) => this.cfScoreUpgrades.set(res.items),
-    });
-  }
 
   // Manual event navigation
   prevManualEvent(): void {
@@ -108,15 +141,50 @@ export class DashboardComponent implements OnInit {
   }
 
   nextManualEvent(): void {
-    if (this.canNavigateNext()) {
-      this.manualEventIndex.update((i) => i + 1);
+    if (!this.canNavigateNext()) {
+      return;
     }
+    const nextIdx = this.manualEventIndex() + 1;
+    if (nextIdx >= this.unresolvedManualEvents().length) {
+      // Reached the end of what's loaded — lazily fetch the next page first
+      this.loadMoreManualEvents(() => {
+        const maxIdx = this.unresolvedManualEvents().length - 1;
+        this.manualEventIndex.set(Math.min(nextIdx, maxIdx));
+      });
+      return;
+    }
+    this.manualEventIndex.set(nextIdx);
+  }
+
+  private loadMoreManualEvents(after?: () => void): void {
+    if (this.loadingMoreManualEvents()) {
+      return;
+    }
+    this.loadingMoreManualEvents.set(true);
+    const page = this.manualNextPage();
+    this.eventsApi
+      .getManualEvents({ page, pageSize: DashboardComponent.MANUAL_PAGE_SIZE, isResolved: false })
+      .subscribe({
+        next: (res) => {
+          this.manualPages.update((cur) => [...cur, ...res.items]);
+          this.manualNextPage.set(page + 1);
+          this.totalUnresolvedManualEvents.set(res.totalCount);
+          this.loadingMoreManualEvents.set(false);
+          after?.();
+        },
+        error: () => {
+          this.loadingMoreManualEvents.set(false);
+          this.toast.error('Failed to load more events');
+        },
+      });
   }
 
   dismissManualEvent(event: ManualEvent): void {
     this.eventsApi.resolveManualEvent(event.id).subscribe({
       next: () => {
         this.hub.removeManualEvent(event.id);
+        this.manualPages.update((cur) => cur.filter((e) => e.id !== event.id));
+        this.totalUnresolvedManualEvents.update((t) => Math.max(0, t - 1));
         const maxIdx = this.unresolvedManualEvents().length - 1;
         if (this.manualEventIndex() > maxIdx) {
           this.manualEventIndex.set(Math.max(0, maxIdx));
@@ -124,6 +192,28 @@ export class DashboardComponent implements OnInit {
         this.toast.success('Event dismissed');
       },
       error: () => this.toast.error('Failed to dismiss event'),
+    });
+  }
+
+  async dismissAllManualEvents(): Promise<void> {
+    const confirmed = await this.confirm.confirm({
+      title: 'Dismiss all events',
+      message: `Dismiss all ${this.manualEventCount()} action required events? This marks them all as resolved.`,
+      confirmLabel: 'Dismiss all',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.eventsApi.resolveAllManualEvents().subscribe({
+      next: (res) => {
+        this.hub.clearManualEvents();
+        this.manualPages.set([]);
+        this.manualNextPage.set(1);
+        this.totalUnresolvedManualEvents.set(0);
+        this.manualEventIndex.set(0);
+        this.toast.success(`Dismissed ${res.resolvedCount} events`);
+      },
+      error: () => this.toast.error('Failed to dismiss events'),
     });
   }
 

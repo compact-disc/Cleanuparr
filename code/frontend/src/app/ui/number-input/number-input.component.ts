@@ -2,11 +2,13 @@ import { Component, ChangeDetectionStrategy, input, model, output, inject } from
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { DocumentationService } from '@core/services/documentation.service';
+import { NewBadgeComponent } from '@ui/new-badge/new-badge.component';
+import { generateControlId } from '@ui/control-id';
 
 @Component({
   selector: 'app-number-input',
   standalone: true,
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, NewBadgeComponent],
   templateUrl: './number-input.component.html',
   styleUrl: './number-input.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -14,7 +16,10 @@ import { DocumentationService } from '@core/services/documentation.service';
 export class NumberInputComponent {
   private readonly docs = inject(DocumentationService);
 
+  protected readonly controlId = generateControlId('app-number');
+
   label = input<string>();
+  featureId = input<string>();
   placeholder = input('');
   disabled = input(false);
   min = input<number>();

@@ -28,8 +28,8 @@ public class ManualEventsController : ControllerBase
         [FromQuery] int pageSize = 50,
         [FromQuery] bool? isResolved = null,
         [FromQuery] string? severity = null,
-        [FromQuery] DateTime? fromDate = null,
-        [FromQuery] DateTime? toDate = null,
+        [FromQuery] DateTimeOffset? fromDate = null,
+        [FromQuery] DateTimeOffset? toDate = null,
         [FromQuery] string? search = null)
     {
         // Validate pagination parameters
@@ -142,6 +142,19 @@ public class ManualEventsController : ControllerBase
     }
 
     /// <summary>
+    /// Marks all unresolved manual events as resolved
+    /// </summary>
+    [HttpPost("resolve_all")]
+    public async Task<ActionResult<object>> ResolveAllManualEvents()
+    {
+        int resolvedCount = await _context.ManualEvents
+            .Where(e => !e.IsResolved)
+            .ExecuteUpdateAsync(setter => setter.SetProperty(e => e.IsResolved, true));
+
+        return Ok(new { ResolvedCount = resolvedCount });
+    }
+
+    /// <summary>
     /// Gets manual event statistics
     /// </summary>
     [HttpGet("stats")]
@@ -182,7 +195,7 @@ public class ManualEventsController : ControllerBase
     [HttpPost("cleanup")]
     public async Task<ActionResult<object>> CleanupOldResolvedEvents([FromQuery] int retentionDays = 30)
     {
-        var cutoffDate = DateTime.UtcNow.AddDays(-retentionDays);
+        var cutoffDate = DateTimeOffset.UtcNow.AddDays(-retentionDays);
 
         var deletedCount = await _context.ManualEvents
             .Where(e => e.IsResolved && e.Timestamp < cutoffDate)

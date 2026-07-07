@@ -1,9 +1,10 @@
 using System.IO.Enumeration;
+using Cleanuparr.Domain.Entities;
 using Cleanuparr.Infrastructure.Features.DownloadClient;
 using Cleanuparr.Infrastructure.Interceptors;
 using Cleanuparr.Persistence;
+using Cleanuparr.Persistence.Models.Configuration;
 using Cleanuparr.Persistence.Models.Configuration.DownloadCleaner;
-using Cleanuparr.Shared.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -53,22 +54,52 @@ public sealed class OrphanedFilesCleanupService : IOrphanedFilesCleanupService
             return;
         }
 
-        // Build set of all content paths claimed by active torrents across ALL download clients
-        // to avoid false positives from cross-seeded clients.
+        List<OrphanedFilesConfig> scannableConfigs = new();
+        foreach (OrphanedFilesConfig config in orphanedFilesConfigs)
+        {
+            if (config.ScanDirectories.Count is 0)
+            {
+                _logger.LogWarning("skip | no scan directories configured for client {name}", config.DownloadClientConfig.Name);
+                continue;
+            }
+
+            scannableConfigs.Add(config);
+        }
+
+        if (scannableConfigs.Count is 0)
+        {
+            return;
+        }
+
+        HashSet<Guid> clientIdsNeedingScan = scannableConfigs
+            .Select(x => x.DownloadClientConfigId)
+            .ToHashSet();
+
+        // Build set of content paths claimed by active torrents across clients that have ScanDirectories configured.
         HashSet<string> claimedPaths = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<Guid> skippedClientIds = new();
 
         foreach (IDownloadService downloadService in downloadServices)
         {
-            await AddClaimedPathsAsync(downloadService, claimedPaths);
+            if (!clientIdsNeedingScan.Contains(downloadService.ClientConfig.Id))
+            {
+                continue;
+            }
+
+            bool success = await TryAddClaimedPathsAsync(downloadService, claimedPaths);
+            if (!success)
+            {
+                skippedClientIds.Add(downloadService.ClientConfig.Id);
+            }
         }
 
         _logger.LogDebug("{count} claimed paths across all clients", claimedPaths.Count);
 
-        foreach (OrphanedFilesConfig clientConfig in orphanedFilesConfigs)
+        foreach (OrphanedFilesConfig clientConfig in scannableConfigs)
         {
-            if (clientConfig.ScanDirectories.Count is 0)
+            if (skippedClientIds.Contains(clientConfig.DownloadClientConfigId))
             {
-                _logger.LogWarning("skip | no scan directories configured for client {name}", clientConfig.DownloadClientConfig.Name);
+                _logger.LogWarning("skip | torrents are unavailable or empty | {name}", clientConfig.DownloadClientConfig.Name);
                 continue;
             }
 
@@ -103,48 +134,33 @@ public sealed class OrphanedFilesCleanupService : IOrphanedFilesCleanupService
         }
     }
 
-    private async Task AddClaimedPathsAsync(IDownloadService downloadService, HashSet<string> claimedPaths)
+    private async Task<bool> TryAddClaimedPathsAsync(IDownloadService downloadService, HashSet<string> claimedPaths)
     {
-        var downloadClient = downloadService.ClientConfig;
+        DownloadClientConfig downloadClient = downloadService.ClientConfig;
+        List<ITorrentItemWrapper> torrents;
         try
         {
-            var torrents = await downloadService.GetAllTorrentsLite();
-
-            foreach (var torrent in torrents)
-            {
-                if (string.IsNullOrEmpty(torrent.SavePath))
-                {
-                    continue;
-                }
-
-                string remappedSavePath = PathHelper.NormalizeAndRemap(
-                    torrent.SavePath,
-                    downloadClient.DownloadDirectorySource,
-                    downloadClient.DownloadDirectoryTarget
-                ).TrimEnd(Path.DirectorySeparatorChar);
-
-                claimedPaths.Add(remappedSavePath);
-
-                if (string.IsNullOrEmpty(torrent.Name))
-                {
-                    continue;
-                }
-
-                string contentPath = PathHelper.NormalizeAndRemap(
-                    Path.Combine(torrent.SavePath, torrent.Name),
-                    downloadClient.DownloadDirectorySource,
-                    downloadClient.DownloadDirectoryTarget
-                );
-
-                claimedPaths.Add(contentPath.TrimEnd(Path.DirectorySeparatorChar));
-            }
-
-            _logger.LogDebug("Loaded {count} torrent paths from {name}", torrents.Count, downloadClient.Name);
+            torrents = await downloadService.GetAllTorrentsLite();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get torrents from client {name}", downloadClient.Name);
+            _logger.LogError(ex, "Failed to get torrents | {name}", downloadClient.Name);
+            return false;
         }
+
+        if (torrents.Count is 0)
+        {
+            _logger.LogDebug("No torrents found | {name}", downloadClient.Name);
+            return false;
+        }
+
+        foreach (string claimedPath in await downloadService.GetClaimedPathsAsync(torrents))
+        {
+            claimedPaths.Add(claimedPath);
+        }
+
+        _logger.LogDebug("Loaded {count} torrents | {name}", torrents.Count, downloadClient.Name);
+        return true;
     }
 
     private void ProcessDirectory(
@@ -190,10 +206,10 @@ public sealed class OrphanedFilesCleanupService : IOrphanedFilesCleanupService
 
                 if (clientConfig.MinFileAgeHours > 0)
                 {
-                    DateTime lastWrite = File.GetLastWriteTimeUtc(normalizedPath);
-                    DateTime created = File.GetCreationTimeUtc(normalizedPath);
-                    DateTime mostRecent = lastWrite > created ? lastWrite : created;
-                    double ageHours = (_timeProvider.GetUtcNow().UtcDateTime - mostRecent).TotalHours;
+                    DateTimeOffset lastWrite = File.GetLastWriteTimeUtc(normalizedPath);
+                    DateTimeOffset created = File.GetCreationTimeUtc(normalizedPath);
+                    DateTimeOffset mostRecent = lastWrite > created ? lastWrite : created;
+                    double ageHours = (_timeProvider.GetUtcNow() - mostRecent).TotalHours;
 
                     if (ageHours < clientConfig.MinFileAgeHours)
                     {
@@ -229,7 +245,7 @@ public sealed class OrphanedFilesCleanupService : IOrphanedFilesCleanupService
         if (Path.Exists(destination))
         {
             const int maxAttempts = 100;
-            string timestamp = _timeProvider.GetUtcNow().UtcDateTime.ToString("yyyyMMddHHmmss");
+            string timestamp = _timeProvider.GetUtcNow().ToString("yyyyMMddHHmmss");
             destination = Path.Combine(orphanedDirectory, $"{entryName}_{timestamp}");
 
             int counter = 1;
@@ -247,17 +263,17 @@ public sealed class OrphanedFilesCleanupService : IOrphanedFilesCleanupService
 
         Directory.CreateDirectory(orphanedDirectory);
 
-        DateTime now = _timeProvider.GetUtcNow().UtcDateTime;
+        DateTimeOffset now = _timeProvider.GetUtcNow();
 
         if (Directory.Exists(path))
         {
             Directory.Move(path, destination);
-            Directory.SetLastWriteTimeUtc(destination, now);
+            Directory.SetLastWriteTimeUtc(destination, now.UtcDateTime);
         }
         else
         {
             File.Move(path, destination);
-            File.SetLastWriteTimeUtc(destination, now);
+            File.SetLastWriteTimeUtc(destination, now.UtcDateTime);
         }
 
         _logger.LogInformation("orphaned entry moved | {source} -> {dest}", path, destination);
@@ -275,13 +291,13 @@ public sealed class OrphanedFilesCleanupService : IOrphanedFilesCleanupService
             return;
         }
 
-        DateTime cutoff = _timeProvider.GetUtcNow().UtcDateTime.AddHours(-clientConfig.PurgeAfterHours.Value);
+        DateTimeOffset cutoff = _timeProvider.GetUtcNow().AddHours(-clientConfig.PurgeAfterHours.Value);
 
         foreach (string filePath in Directory.EnumerateFileSystemEntries(clientConfig.OrphanedDirectory))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            DateTime lastWrite = File.GetLastWriteTimeUtc(filePath);
+            DateTimeOffset lastWrite = File.GetLastWriteTimeUtc(filePath);
             if (lastWrite > cutoff)
             {
                 continue;

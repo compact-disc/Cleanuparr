@@ -2,11 +2,13 @@ import { Component, ChangeDetectionStrategy, input, model, output, inject } from
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { DocumentationService } from '@core/services/documentation.service';
+import { NewBadgeComponent } from '@ui/new-badge/new-badge.component';
+import { generateControlId } from '@ui/control-id';
 
 @Component({
   selector: 'app-textarea',
   standalone: true,
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, NewBadgeComponent],
   templateUrl: './textarea.component.html',
   styleUrl: './textarea.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -14,7 +16,10 @@ import { DocumentationService } from '@core/services/documentation.service';
 export class TextareaComponent {
   private readonly docs = inject(DocumentationService);
 
+  protected readonly controlId = generateControlId('app-textarea');
+
   label = input<string>();
+  featureId = input<string>();
   placeholder = input('');
   disabled = input(false);
   readonly = input(false);

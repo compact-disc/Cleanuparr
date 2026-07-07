@@ -1,11 +1,12 @@
-<label class="toggle" [class.toggle--disabled]="disabled()">
+<label class="toggle" [class.toggle--disabled]="effectiveDisabled()" [attr.for]="controlId">
   <button
+    [id]="controlId"
     class="toggle__track"
     [class.toggle__track--checked]="checked()"
     role="switch"
     [attr.aria-checked]="checked()"
     [attr.aria-label]="label()"
-    [disabled]="disabled()"
+    [disabled]="effectiveDisabled()"
     (click)="toggle()"
     (keydown)="onKeydown($event)"
   >
@@ -18,6 +19,9 @@
         <button class="field-help-btn" (click)="onHelpClick($event)" aria-label="Open documentation" tabindex="-1">
           <ng-icon name="tablerQuestionMark" size="14" />
         </button>
+      }
+      @if (featureId()) {
+        <app-new-badge variant="inline" [featureId]="featureId()!" />
       }
     </span>
   }

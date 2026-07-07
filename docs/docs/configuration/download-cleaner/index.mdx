@@ -232,6 +232,10 @@ When enabled, the source files will be deleted from disk when the download is re
   All Orphaned Files settings are configured per download client in the <strong>Orphaned Files</strong> accordion inside the per-client section.
 </p>
 
+<Note>
+To decide what is orphaned, Cleanuparr compares the scan directories against the save paths of active torrents. If the download client and Cleanuparr see those files at different paths (common in Docker), configure the path mapping per client under **Download Client → Download Directory Source and Target**, otherwise files still in use may be flagged as orphaned.
+</Note>
+
 <ConfigSection
   title="Exclude Patterns"
 >
@@ -335,6 +339,10 @@ The orphaned directory itself is never scanned for orphans. If the destination a
   Settings for managing downloads that no longer have hardlinks to media files (indicating they may no longer be needed by the *arr applications).
 </p>
 
+<Note>
+To check hardlinks, Cleanuparr must be able to read the files on disk. If the download client and Cleanuparr see those files at different paths (common in Docker), configure the path mapping per client under **Download Client → Download Directory Source and Target**.
+</Note>
+
 <ConfigSection
   title="Enable Unlinked Download Handling"
 >
@@ -359,53 +367,7 @@ Category to move unlinked downloads to. You must create a seeding rule for this 
   title="Use Tag"
 >
 
-When enabled, uses a tag instead of category for marking unlinked downloads (qBittorrent only).
-
-</ConfigSection>
-
-<ConfigSection
-  title="Download Directory (Source) and Local Directory (Target)"
->
-
-The path prefix as reported by the download client (e.g. `/downloads`). Used for path mapping when the download client's internal paths differ from the paths accessible to Cleanuparr — common in Docker setups where volume mount paths differ between containers. Leave blank if no path translation is needed.
-
-<br/>
-
-**Docker example:**
-
-In a typical Docker Compose setup, each container has its own view of the filesystem. Download clients may each have their own host directory but both report paths starting with `/downloads`. Since Cleanuparr mounts those directories under different paths, you need to configure the mapping per client so Cleanuparr can locate the actual files.
-
-```yaml
-services:
-  qbittorrent:
-    image: ...
-    ...
-    volumes:
-      - /host/data/downloads-qbit:/downloads        # qBittorrent sees /downloads
-
-  deluge:
-    image: ...
-    ...
-    volumes:
-      - /host/data/downloads-deluge:/downloads      # Deluge sees /downloads
-
-  cleanuparr:
-    image: ghcr.io/cleanuparr/cleanuparr
-    ...
-    volumes:
-      - /host/data/downloads-qbit:/downloads-qbit   # Cleanuparr sees /downloads-qbit
-      - /host/data/downloads-qbit:/downloads-deluge # Cleanuparr sees /downloads-deluge
-```
-
-Both download clients store files in separate host directories but report paths under the same `/downloads` prefix. Cleanuparr mounts each host directory under a different path, so it needs to know the translation per client:
-
-- **qBittorrent** reports `/downloads/movie.mkv` while Cleanuparr finds it at `/downloads-qbit/movie.mkv`
-  - Download Directory (Source): `/downloads`
-  - Local Directory (Target): `/downloads-qbit`
-
-- **Deluge** reports `/downloads/movie.mkv` while Cleanuparr finds it at `/downloads-deluge/movie.mkv`
-  - Download Directory (Source): `/downloads`
-  - Local Directory (Target): `/downloads-deluge`
+When enabled, marks unlinked downloads with a tag instead of changing their category, preserving the original category. Supported by **qBittorrent** (tags) and **Transmission** (labels); not available for other clients.
 
 </ConfigSection>
 
@@ -433,6 +395,62 @@ For the example above, the ignored root directory should be set to `/data/downlo
 >
 
 Categories to check for unlinked downloads. Only downloads in these categories will be checked for missing hardlinks.
+
+</ConfigSection>
+
+</div>
+
+<div className={styles.section}>
+
+<SectionTitle>Dead Torrents</SectionTitle>
+
+<p className={styles.sectionDescription}>
+  A dead torrent is one whose tracker reports no seeders for a prolonged period — typically because it was removed from the tracker, or the tracker host itself is gone — so it can never reach a ratio or seed-time threshold. Instead of deleting such torrents, this feature moves them to a target category (or adds a tag/label) so you can decide what to do next via a seeding rule for that category/tag. It runs as part of the Download Cleaner job. Configured per download client in the <strong>Dead Torrents</strong> accordion.
+</p>
+
+<Note>
+A torrent is considered dead on a run when the client reports **no seeders** — a count of `0`, an unknown count (e.g. qBittorrent's `-1`), or no count at all because the tracker is unreachable. It is only moved after it has been dead for the configured number of consecutive runs (the strike count), and **strikes reset to zero as soon as the client reports seeders again**. Supported for **qBittorrent**, **Transmission**, **Deluge**, and **µTorrent** — not **rTorrent**, which does not report a seeder count.
+</Note>
+
+<ConfigSection
+  title="Enable Dead Torrent Handling"
+>
+
+When enabled, torrents in the configured categories that report no seeders for the configured number of consecutive runs are moved to the target category (or tagged). Create a seeding rule for that category/tag to control whether and when they are removed.
+
+</ConfigSection>
+
+<ConfigSection
+  title="Dead Torrent Target Category"
+>
+
+The category a dead torrent is moved to (or the tag/label added when **Use Tag** is enabled). Create a seeding rule for this category/tag to manage the moved torrents.
+
+</ConfigSection>
+
+<ConfigSection
+  title="Dead Torrent Use Tag"
+>
+
+When enabled, adds a tag/label instead of changing the category, preserving the original category. Supported by **qBittorrent** (tags) and **Transmission** (labels). For Transmission, changing the category (with this option off) moves the files on disk, whereas using a label does not.
+
+</ConfigSection>
+
+<ConfigSection
+  title="Dead Torrent Strikes"
+>
+
+The number of consecutive runs a torrent must report no seeders before it is moved. Minimum is `3`. Strikes reset to zero as soon as seeders are found again.
+
+Set this **high enough to ride out tracker downtime** so a temporarily-unreachable tracker isn't mistaken for a dead one. Choose it together with the Download Cleaner schedule — with an hourly schedule, `24` ≈ one day and `168` ≈ one week of being continuously dead.
+
+</ConfigSection>
+
+<ConfigSection
+  title="Dead Torrent Categories"
+>
+
+Source categories to scan for dead torrents. Only downloads in these categories are checked. The target category must not be one of these.
 
 </ConfigSection>
 

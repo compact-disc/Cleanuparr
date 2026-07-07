@@ -1,4 +1,6 @@
+using Cleanuparr.Api.Extensions;
 using Cleanuparr.Api.Features.DownloadCleaner.Contracts.Requests;
+using Cleanuparr.Api.Features.DownloadCleaner.Contracts.Responses;
 using Cleanuparr.Persistence;
 using Cleanuparr.Persistence.Models.Configuration.DownloadCleaner;
 using Microsoft.AspNetCore.Authorization;
@@ -36,14 +38,14 @@ public class UnlinkedConfigController : ControllerBase
 
             if (client is null)
             {
-                return NotFound(new { Message = $"Download client with ID {downloadClientId} not found" });
+                return this.ProblemResult(StatusCodes.Status404NotFound, $"Download client with ID {downloadClientId} not found");
             }
 
             var config = await _dataContext.UnlinkedConfigs
                 .AsNoTracking()
                 .FirstOrDefaultAsync(u => u.DownloadClientConfigId == downloadClientId);
 
-            return Ok(config);
+            return Ok(config is null ? null : UnlinkedConfigResponse.From(config));
         }
         finally
         {
@@ -54,11 +56,6 @@ public class UnlinkedConfigController : ControllerBase
     [HttpPut("{downloadClientId}")]
     public async Task<IActionResult> UpdateUnlinkedConfig(Guid downloadClientId, [FromBody] UnlinkedConfigRequest dto)
     {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(ModelState);
-        }
-
         await DataContext.Lock.WaitAsync();
         try
         {
@@ -68,7 +65,7 @@ public class UnlinkedConfigController : ControllerBase
 
             if (client is null)
             {
-                return NotFound(new { Message = $"Download client with ID {downloadClientId} not found" });
+                return this.ProblemResult(StatusCodes.Status404NotFound, $"Download client with ID {downloadClientId} not found");
             }
 
             var existing = await _dataContext.UnlinkedConfigs
@@ -95,7 +92,7 @@ public class UnlinkedConfigController : ControllerBase
 
             _logger.LogInformation("Updated unlinked config for client {ClientId}", downloadClientId);
 
-            return Ok(existing);
+            return Ok(UnlinkedConfigResponse.From(existing));
         }
         finally
         {

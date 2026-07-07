@@ -41,6 +41,27 @@ public partial class DelugeService
             .ToList();
     }
 
+    /// <inheritdoc/>
+    public override Task<IReadOnlyList<string>> GetClaimedPathsAsync(IReadOnlyList<ITorrentItemWrapper> torrents) =>
+        BuildClaimedPathsAsync(torrents, async torrent =>
+        {
+            if (string.IsNullOrEmpty(torrent.Hash))
+            {
+                return [];
+            }
+
+            DelugeContents? contents = await _client.GetTorrentFiles(torrent.Hash);
+            List<string> relativePaths = [];
+            ProcessFiles(contents?.Contents, (_, file) =>
+            {
+                if (!string.IsNullOrEmpty(file.Path))
+                {
+                    relativePaths.Add(file.Path);
+                }
+            });
+            return relativePaths;
+        });
+
     public override List<ITorrentItemWrapper>? FilterDownloadsToBeCleanedAsync(List<ITorrentItemWrapper>? downloads, List<ISeedingRule> seedingRules) =>
         downloads
             ?.Where(x => seedingRules.Any(rule => rule.Categories.Any(cat => cat.Equals(x.Category, StringComparison.OrdinalIgnoreCase))))
@@ -154,6 +175,22 @@ public partial class DelugeService
 
             torrent.Category = unlinkedConfig.TargetCategory;
         }
+    }
+
+    /// <inheritdoc/>
+    public override async Task ChangeTorrentCategoryAsync(ITorrentItemWrapper torrent, string targetCategory, bool useTag)
+    {
+        ContextProvider.Set(ContextProvider.Keys.ItemName, torrent.Name);
+        ContextProvider.Set(ContextProvider.Keys.Hash, torrent.Hash);
+        SetDownloadClientContext();
+
+        string currentCategory = torrent.Category ?? string.Empty;
+
+        await _dryRunInterceptor.InterceptAsync(() => ChangeLabel(torrent.Hash, targetCategory));
+
+        await _eventPublisher.PublishCategoryChanged(currentCategory, targetCategory);
+
+        torrent.Category = targetCategory;
     }
 
     protected async Task CreateLabel(string name)

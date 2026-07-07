@@ -32,6 +32,32 @@ public partial class RTorrentService
             .ToList();
     }
 
+    /// <inheritdoc/>
+    public override Task<IReadOnlyList<string>> GetClaimedPathsAsync(IReadOnlyList<ITorrentItemWrapper> torrents)
+    {
+        HashSet<string> claimed = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (ITorrentItemWrapper torrent in torrents)
+        {
+            if (torrent is not RTorrentItemWrapper wrapper)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(wrapper.Info.BasePath))
+            {
+                claimed.Add(RemapAndTrim(wrapper.Info.BasePath));
+            }
+
+            if (!string.IsNullOrEmpty(wrapper.Info.Directory))
+            {
+                claimed.Add(RemapAndTrim(wrapper.Info.Directory));
+            }
+        }
+
+        return Task.FromResult<IReadOnlyList<string>>(claimed.ToList());
+    }
+
     public override List<ITorrentItemWrapper>? FilterDownloadsToBeCleanedAsync(List<ITorrentItemWrapper>? downloads, List<ISeedingRule> seedingRules) =>
         downloads
             ?.Where(x => seedingRules.Any(rule => rule.Categories.Any(cat => cat.Equals(x.Category, StringComparison.OrdinalIgnoreCase))))
@@ -148,6 +174,22 @@ public partial class RTorrentService
 
             torrent.Category = unlinkedConfig.TargetCategory;
         }
+    }
+
+    /// <inheritdoc/>
+    public override async Task ChangeTorrentCategoryAsync(ITorrentItemWrapper torrent, string targetCategory, bool useTag)
+    {
+        ContextProvider.Set(ContextProvider.Keys.ItemName, torrent.Name);
+        ContextProvider.Set(ContextProvider.Keys.Hash, torrent.Hash);
+        SetDownloadClientContext();
+
+        string currentCategory = torrent.Category ?? string.Empty;
+
+        await _dryRunInterceptor.InterceptAsync(() => ChangeLabel(torrent.Hash, targetCategory));
+
+        await _eventPublisher.PublishCategoryChanged(currentCategory, targetCategory);
+
+        torrent.Category = targetCategory;
     }
 
     protected virtual async Task ChangeLabel(string hash, string newLabel)

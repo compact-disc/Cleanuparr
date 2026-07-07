@@ -34,7 +34,7 @@ namespace Cleanuparr.Persistence.Migrations.Users
                         .HasColumnType("INTEGER")
                         .HasColumnName("is_used");
 
-                    b.Property<DateTime?>("UsedAt")
+                    b.Property<DateTimeOffset?>("UsedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("used_at");
 
@@ -58,15 +58,15 @@ namespace Cleanuparr.Persistence.Migrations.Users
                         .HasColumnType("TEXT")
                         .HasColumnName("id");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
-                    b.Property<DateTime>("ExpiresAt")
+                    b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("expires_at");
 
-                    b.Property<DateTime?>("RevokedAt")
+                    b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("revoked_at");
 
@@ -104,7 +104,7 @@ namespace Cleanuparr.Persistence.Migrations.Users
                         .HasColumnType("TEXT")
                         .HasColumnName("api_key");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 
@@ -112,7 +112,7 @@ namespace Cleanuparr.Persistence.Migrations.Users
                         .HasColumnType("INTEGER")
                         .HasColumnName("failed_login_attempts");
 
-                    b.Property<DateTime?>("LockoutEnd")
+                    b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("TEXT")
                         .HasColumnName("lockout_end");
 
@@ -153,7 +153,7 @@ namespace Cleanuparr.Persistence.Migrations.Users
                         .HasColumnType("TEXT")
                         .HasColumnName("totp_secret");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
 
@@ -232,6 +232,37 @@ namespace Cleanuparr.Persistence.Migrations.Users
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Cleanuparr.Persistence.Models.Auth.UserFeatureView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("id");
+
+                    b.Property<string>("FeatureId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("feature_id");
+
+                    b.Property<DateTimeOffset>("FirstSeenAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("first_seen_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_user_feature_views");
+
+                    b.HasIndex("UserId", "FeatureId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_user_feature_views_user_id_feature_id");
+
+                    b.ToTable("user_feature_views", (string)null);
+                });
+
             modelBuilder.Entity("Cleanuparr.Persistence.Models.Auth.RecoveryCode", b =>
                 {
                     b.HasOne("Cleanuparr.Persistence.Models.Auth.User", "User")
@@ -256,8 +287,22 @@ namespace Cleanuparr.Persistence.Migrations.Users
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Cleanuparr.Persistence.Models.Auth.UserFeatureView", b =>
+                {
+                    b.HasOne("Cleanuparr.Persistence.Models.Auth.User", "User")
+                        .WithMany("FeatureViews")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_feature_views_users_user_id");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Cleanuparr.Persistence.Models.Auth.User", b =>
                 {
+                    b.Navigation("FeatureViews");
+
                     b.Navigation("RecoveryCodes");
 
                     b.Navigation("RefreshTokens");

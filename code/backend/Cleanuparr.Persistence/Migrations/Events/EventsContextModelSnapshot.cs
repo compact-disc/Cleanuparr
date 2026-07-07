@@ -28,7 +28,7 @@ namespace Cleanuparr.Persistence.Migrations.Events
                         .HasColumnType("TEXT")
                         .HasColumnName("arr_instance_id");
 
-                    b.Property<DateTime?>("CompletedAt")
+                    b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("completed_at");
 
@@ -76,7 +76,7 @@ namespace Cleanuparr.Persistence.Migrations.Events
                         .HasColumnType("TEXT")
                         .HasColumnName("strike_id");
 
-                    b.Property<DateTime>("Timestamp")
+                    b.Property<DateTimeOffset>("Timestamp")
                         .HasColumnType("TEXT")
                         .HasColumnName("timestamp");
 
@@ -170,7 +170,7 @@ namespace Cleanuparr.Persistence.Migrations.Events
                         .HasColumnType("TEXT")
                         .HasColumnName("severity");
 
-                    b.Property<DateTime>("Timestamp")
+                    b.Property<DateTimeOffset>("Timestamp")
                         .HasColumnType("TEXT")
                         .HasColumnName("timestamp");
 
@@ -289,11 +289,11 @@ namespace Cleanuparr.Persistence.Migrations.Events
                         .HasColumnType("TEXT")
                         .HasColumnName("id");
 
-                    b.Property<DateTime?>("CompletedAt")
+                    b.Property<DateTimeOffset?>("CompletedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("completed_at");
 
-                    b.Property<DateTime>("StartedAt")
+                    b.Property<DateTimeOffset>("StartedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("started_at");
 
@@ -326,7 +326,7 @@ namespace Cleanuparr.Persistence.Migrations.Events
                         .HasColumnType("TEXT")
                         .HasColumnName("id");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
 

@@ -2,11 +2,13 @@ import { Component, ChangeDetectionStrategy, input, model, output, ElementRef, v
 import { FormsModule } from '@angular/forms';
 import { NgIcon } from '@ng-icons/core';
 import { DocumentationService } from '@core/services/documentation.service';
+import { NewBadgeComponent } from '@ui/new-badge/new-badge.component';
+import { generateControlId } from '@ui/control-id';
 
 @Component({
   selector: 'app-input',
   standalone: true,
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, NewBadgeComponent],
   templateUrl: './input.component.html',
   styleUrl: './input.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -14,7 +16,10 @@ import { DocumentationService } from '@core/services/documentation.service';
 export class InputComponent {
   private readonly docs = inject(DocumentationService);
 
+  protected readonly controlId = generateControlId('app-input');
+
   label = input<string>();
+  featureId = input<string>();
   placeholder = input('');
   type = input<'text' | 'password' | 'email' | 'url' | 'search' | 'datetime-local' | 'date' | 'number'>('text');
   disabled = input(false);
