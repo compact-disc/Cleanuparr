@@ -7,4 +7,8 @@ public sealed record ArrTrackFile
     public bool QualityCutoffNotMet { get; init; }
     
     public int CustomFormatScore { get; init; }
+    
+    public bool HasFile { get; init; }
+    
+    public int TrackFileId { get; init; }
 }

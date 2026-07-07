@@ -14,5 +14,7 @@ public sealed record SearchableAlbum
     
     public DateTime? Added { get; init; }
     
+    public DateTimeOffset? LastSearched { get; init; }
+    
     public DateTime? ReleaseDateUtc { get; init; }
 }

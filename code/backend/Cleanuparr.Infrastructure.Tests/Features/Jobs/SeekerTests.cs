@@ -92,6 +92,7 @@ public class SeekerTests : IDisposable
             _fixture.DataContext,
             _radarrClient,
             _sonarrClient,
+            _lidarrClient,
             _fixture.ArrClientFactory,
             _fixture.ArrQueueIterator,
             _fixture.EventPublisher,

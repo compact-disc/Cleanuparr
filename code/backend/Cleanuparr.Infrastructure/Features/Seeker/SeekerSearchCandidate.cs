@@ -8,14 +8,14 @@ namespace Cleanuparr.Infrastructure.Features.Seeker;
 internal sealed record SeekerSearchCandidate
 {
     /// <summary>
-    /// MovieId (Radarr) or SeriesId (Sonarr)
+    /// MovieId (Radarr) or SeriesId (Sonarr) or ArtistId (Lidarr)
     /// </summary>
     public required long ItemId { get; init; }
 
     public required string Name { get; init; }
 
     /// <summary>
-    /// Season number for Sonarr; 0 for Radarr.
+    /// Season number for Sonarr; 0 for Radarr; 0 for Lidarr.
     /// </summary>
     public required int SeasonNumber { get; init; }
 

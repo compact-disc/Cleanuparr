@@ -40,6 +40,7 @@ public class SeekerIntegrationTests : IDisposable
             _fixture.DataContext,
             Substitute.For<IRadarrClient>(),
             Substitute.For<ISonarrClient>(),
+            Substitute.For<ILidarrClient>(),
             _fixture.ArrClientFactory,
             _fixture.ArrQueueIterator,
             _fixture.EventPublisher,
